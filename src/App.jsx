@@ -238,7 +238,7 @@ export default function App() {
       <header style={{ background:card,borderBottom:`1px solid ${border}`,padding:"12px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12 }}>
         <div style={{ display:"flex",alignItems:"center",gap:16 }}>
           {/* Logo CLE */}
-          <img src={LOGO_CLE} alt="Forum CLE" style={{ height:52,objectFit:"contain",filter:"brightness(0) invert(1)",opacity:0.92 }} />
+          <img src={LOGO_CLE} alt="Forum CLE" style={{ height:52,objectFit:"contain",mixBlendMode:"screen",opacity:0.9 }} />
           <div style={{ borderLeft:`1px solid ${border}`,paddingLeft:16 }}>
             <div style={{ fontWeight:800,fontSize:13,color:txt,letterSpacing:0.3,lineHeight:1.3 }}>
               FORUM CHRÉTIEN DE LA LECTURE<br/>ET DE L'ÉCRITURE
