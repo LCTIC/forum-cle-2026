@@ -348,7 +348,7 @@ function ModInscription({ P, db, notify }) {
         </div>
         <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:20 }}>
           <div><label style={lbl}>Ville / Localité</label><input style={inp} value={form.ville} onChange={set("ville")} placeholder="Abidjan, Bouaké…" /></div>
-          <div><label style={lbl}>Tranche d'âge</label><select style={inp} value={form.tranche_age} onChange={set("tranche_age")}><option value="">— Choisir —</option>{["Adolescent (- 18 ans)","Jeune (18-25 ans)","Adulte (26-45 ans)","Senior (+ 45 ans)"].map(t=><option key={t}>{t}</option>)}</select></div>
+          <div><label style={lbl}>Tranche d'âge</label><select style={inp} value={form.tranche_age} onChange={set("tranche_age")}><option value="">— Choisir —</option>{["Enfant (- 13 ans)","Adolescent (13-18 ans)","Jeune (18-25 ans)","Adulte (26-45 ans)","Senior (+ 45 ans)"].map(t=><option key={t}>{t}</option>)}</select></div>
         </div>
         <button style={{ ...btnP(),opacity:saving?0.6:1 }} disabled={saving} onClick={submit}>{saving?"⏳ Enregistrement…":"✦ Inscrire et générer QR Code"}</button>
       </div>
