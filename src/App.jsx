@@ -47,7 +47,7 @@ function parseCSV(text) {
   const lines = text.trim().split(/\r?\n/)
   if (lines.length < 2) return { data:[], errors:["Fichier vide"] }
   const rawH = lines[0].split(",").map(h=>h.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9_]/g,""))
-  const MAP  = { id:["id","identifiant","qr","qrcode","code"], nom:["nom","name","lastname"], prenom:["prenom","firstname"], email:["email","mail","courriel"], tel:["tel","telephone","phone","contact"], categorie:["categorie","category","type","profil"] }
+  const MAP  = { id:["id","identifiant","qr","qrcode","code"], nom:["nom","name","lastname"], prenom:["prenom","firstname"], email:["email","mail","courriel"], tel:["tel","telephone","phone","contact"], categorie:["categorie","category","type","profil"], ville:["ville","city","localite","localité"], tranche_age:["tranche_age","tranche age","age","trancheage"] }
   const ci   = {}
   Object.entries(MAP).forEach(([f,al])=>{ const i=rawH.findIndex(h=>al.includes(h)); if(i!==-1) ci[f]=i })
   const miss = ["nom","prenom","email"].filter(f=>ci[f]===undefined)
@@ -59,7 +59,7 @@ function parseCSV(text) {
     const nom=cols[ci.nom]||"", prenom=cols[ci.prenom]||"", email=cols[ci.email]||""
     if(!nom||!prenom||!email){errors.push(`Ligne ${i+2} ignorée : données incomplètes`);return}
     const rawId=ci.id!==undefined?(cols[ci.id]||""):""
-    data.push({ id:rawId.startsWith("CLE-")?rawId:newId(), nom, prenom, email, tel:ci.tel!==undefined?(cols[ci.tel]||""):"", categorie:ci.categorie!==undefined?(cols[ci.categorie]||"Visiteur"):"Visiteur", statut:"INSCRIT", heure:nowTime(), source:"import" })
+    data.push({ id:rawId.startsWith("CLE-")?rawId:newId(), nom, prenom, email, tel:ci.tel!==undefined?(cols[ci.tel]||""):"", categorie:ci.categorie!==undefined?(cols[ci.categorie]||"Visiteur"):"Visiteur", ville:ci.ville!==undefined?(cols[ci.ville]||""):"", tranche_age:ci.tranche_age!==undefined?(cols[ci.tranche_age]||""):"", statut:"INSCRIT", heure:nowTime(), source:"import" })
   })
   return { data, errors }
 }
@@ -238,7 +238,7 @@ export default function App() {
       <header style={{ background:card,borderBottom:`1px solid ${border}`,padding:"12px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12 }}>
         <div style={{ display:"flex",alignItems:"center",gap:16 }}>
           {/* Logo CLE */}
-          <img src={LOGO_CLE} alt="Forum CLE" style={{ height:52,objectFit:"contain",mixBlendMode:"screen",opacity:0.9 }} />
+          <img src={LOGO_CLE} alt="Forum CLE" style={{ height:52,objectFit:"contain",filter:"brightness(0) invert(1)",opacity:0.92 }} />
           <div style={{ borderLeft:`1px solid ${border}`,paddingLeft:16 }}>
             <div style={{ fontWeight:800,fontSize:13,color:txt,letterSpacing:0.3,lineHeight:1.3 }}>
               FORUM CHRÉTIEN DE LA LECTURE<br/>ET DE L'ÉCRITURE
@@ -284,7 +284,7 @@ export default function App() {
 //  MODULE INSCRIPTION
 // ═══════════════════════════════════════════════════════════════════════════════
 function ModInscription({ P, db, notify }) {
-  const [form,setForm]=useState({nom:"",prenom:"",email:"",tel:"",categorie:"Visiteur"})
+  const [form,setForm]=useState({nom:"",prenom:"",email:"",tel:"",categorie:"Visiteur",ville:"",tranche_age:""})
   const [ok,setOk]=useState(null),[saving,setSaving]=useState(false)
   const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}))
   const lbl={display:"block",fontSize:12,color:sub,marginBottom:5,fontWeight:600}
@@ -292,11 +292,11 @@ function ModInscription({ P, db, notify }) {
   const submit=async()=>{
     if(!form.nom.trim()||!form.prenom.trim()||!form.email.trim()) return notify("⚠️ Nom, prénom et email obligatoires",false)
     setSaving(true)
-    const p={...form,id:newId(),statut:"INSCRIT",heure:nowTime(),source:"nouveau"}
+    const p={...form,id:newId(),statut:"INSCRIT",heure:nowTime(),source:"nouveau",ville:form.ville||"",tranche_age:form.tranche_age||""}
     const ok2=await db.addParticipant(p)
     setSaving(false)
     if(!ok2) return
-    setOk(p); setForm({nom:"",prenom:"",email:"",tel:"",categorie:"Visiteur"})
+    setOk(p); setForm({nom:"",prenom:"",email:"",tel:"",categorie:"Visiteur",ville:"",tranche_age:""})
     notify(`✅ ${p.prenom} ${p.nom} inscrit·e`)
   }
 
@@ -315,6 +315,7 @@ function ModInscription({ P, db, notify }) {
               <div style={{ fontSize:13,color:sub,marginBottom:10 }}>{ok.email}</div>
               <div style={{ fontFamily:"monospace",fontSize:12,color:accent,fontWeight:700,marginBottom:12,wordBreak:"break-all" }}>{ok.id}</div>
               <div style={{ display:"flex",gap:8,flexWrap:"wrap" }}><Badge s="INSCRIT" /><span style={{ background:border,color:sub,padding:"2px 10px",borderRadius:99,fontSize:11 }}>{ok.categorie}</span></div>
+              {(ok.ville||ok.tranche_age)&&<div style={{ fontSize:12,color:sub,marginTop:4 }}>📍 {ok.ville||"—"} · {ok.tranche_age||"—"}</div>}
             </div>
           </div>
           <button style={{ ...btnP(),marginTop:20 }} onClick={()=>setOk(null)}>+ Nouvelle inscription</button>
@@ -341,9 +342,13 @@ function ModInscription({ P, db, notify }) {
           <div><label style={lbl}>Prénom <span style={{ color:red }}>*</span></label><input style={inp} value={form.prenom} onChange={set("prenom")} placeholder="Aminata" /></div>
         </div>
         <div style={{ marginBottom:14 }}><label style={lbl}>Email <span style={{ color:red }}>*</span></label><input style={inp} type="email" value={form.email} onChange={set("email")} placeholder="aminata.kone@email.com" /></div>
-        <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:20 }}>
+        <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14 }}>
           <div><label style={lbl}>Téléphone</label><input style={inp} value={form.tel} onChange={set("tel")} placeholder="+225 07 00 00 00" /></div>
           <div><label style={lbl}>Catégorie</label><select style={inp} value={form.categorie} onChange={set("categorie")}>{["Visiteur","Exposant","Presse","VIP","Staff"].map(c=><option key={c}>{c}</option>)}</select></div>
+        </div>
+        <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:20 }}>
+          <div><label style={lbl}>Ville / Localité</label><input style={inp} value={form.ville} onChange={set("ville")} placeholder="Abidjan, Bouaké…" /></div>
+          <div><label style={lbl}>Tranche d'âge</label><select style={inp} value={form.tranche_age} onChange={set("tranche_age")}><option value="">— Choisir —</option>{["Adolescent (- 18 ans)","Jeune (18-25 ans)","Adulte (26-45 ans)","Senior (+ 45 ans)"].map(t=><option key={t}>{t}</option>)}</select></div>
         </div>
         <button style={{ ...btnP(),opacity:saving?0.6:1 }} disabled={saving} onClick={submit}>{saving?"⏳ Enregistrement…":"✦ Inscrire et générer QR Code"}</button>
       </div>
@@ -547,7 +552,7 @@ function ModAdmin({ P, S, V, db, notify }) {
             <div style={{ background:border,borderRadius:99,height:12,overflow:"hidden",marginBottom:10 }}><div style={{ background:`linear-gradient(90deg,${green},${accent})`,width:`${pct}%`,height:"100%",borderRadius:99,transition:"width 0.5s" }} /></div>
             <div style={{ display:"flex",justifyContent:"space-between",fontSize:12,color:sub }}><span>{pres} présents</span><span>{total-pres} en attente</span><span>{total} inscrits</span></div>
           </div>
-          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:20 }}>
+          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:20 }}>
             <div style={{ background:card,border:`1px solid ${border}`,borderRadius:12,padding:20 }}>
               <div style={{ fontWeight:700,fontSize:14,marginBottom:16 }}>Par catégorie</div>
               {byC.map(({c,n})=>(<div key={c} style={{ marginBottom:12 }}><div style={{ display:"flex",justifyContent:"space-between",marginBottom:4 }}><span style={{ fontSize:13 }}>{c}</span><span style={{ fontWeight:700,color:accent }}>{n}</span></div><div style={{ background:border,borderRadius:99,height:6,overflow:"hidden" }}><div style={{ background:blue,width:`${(n/total)*100}%`,height:"100%",borderRadius:99 }} /></div></div>))}
@@ -556,6 +561,21 @@ function ModAdmin({ P, S, V, db, notify }) {
             <div style={{ background:card,border:`1px solid ${border}`,borderRadius:12,padding:20 }}>
               <div style={{ fontWeight:700,fontSize:14,marginBottom:16 }}>Top stands</div>
               {ss.map((s,i)=>(<div key={s.id} style={{ marginBottom:12 }}><div style={{ display:"flex",justifyContent:"space-between",marginBottom:4 }}><span style={{ fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:155 }}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":`${i+1}.`} {s.nom}</span><span style={{ fontWeight:700,color:s.n>0?accent:sub }}>{s.n}</span></div><div style={{ background:border,borderRadius:99,height:6,overflow:"hidden" }}><div style={{ background:warn,width:`${(s.n/mxS)*100}%`,height:"100%",borderRadius:99,minWidth:s.n>0?4:0 }} /></div></div>))}
+            </div>
+            <div style={{ background:card,border:`1px solid ${border}`,borderRadius:12,padding:20 }}>
+              <div style={{ fontWeight:700,fontSize:14,marginBottom:16 }}>Par ville</div>
+              {(()=>{
+                const villes={}
+                P.forEach(p=>{ if(p.ville) villes[p.ville]=(villes[p.ville]||0)+1 })
+                const arr=Object.entries(villes).sort((a,b)=>b[1]-a[1]).slice(0,8)
+                const mx=arr[0]?arr[0][1]:1
+                return arr.length>0 ? arr.map(([v,n])=>(
+                  <div key={v} style={{ marginBottom:10 }}>
+                    <div style={{ display:"flex",justifyContent:"space-between",marginBottom:4 }}><span style={{ fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:140 }}>{v}</span><span style={{ fontWeight:700,color:accent }}>{n}</span></div>
+                    <div style={{ background:border,borderRadius:99,height:6,overflow:"hidden" }}><div style={{ background:"#A371F7",width:`${(n/mx)*100}%`,height:"100%",borderRadius:99 }} /></div>
+                  </div>
+                )) : <div style={{ color:sub,fontSize:13,textAlign:"center" }}>Aucune donnée</div>
+              })()}
             </div>
           </div>
         </div>
@@ -603,16 +623,18 @@ function ModAdmin({ P, S, V, db, notify }) {
               <span style={{ background:green+"22",color:green,padding:"3px 10px",borderRadius:99,fontSize:12,fontWeight:700 }}>{pres} présents</span>
             </div>
           </div>
-          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1.2fr 75px 80px 55px 60px",padding:"8px 16px",background:bg,borderBottom:`1px solid ${border}` }}>
-            {["ID","Nom","Email","Catégorie","Statut","Visites","Source"].map(h=><div key={h} style={{ fontSize:10,color:sub,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5 }}>{h}</div>)}
+          <div style={{ display:"grid",gridTemplateColumns:"0.8fr 1fr 1.2fr 65px 90px 80px 70px 45px 55px",padding:"8px 16px",background:bg,borderBottom:`1px solid ${border}` }}>
+            {["ID","Nom","Email","Catégorie","Ville","Âge","Statut","Visites","Source"].map(h=><div key={h} style={{ fontSize:10,color:sub,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5 }}>{h}</div>)}
           </div>
           <div style={{ maxHeight:440,overflowY:"auto" }}>
             {P.map((p,i)=>{ const pv=V.filter(v=>v.pid===p.id).length; return (
-              <div key={p.id} style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1.2fr 75px 80px 55px 60px",padding:"10px 16px",alignItems:"center",background:i%2===0?"transparent":bg+"55",borderBottom:`1px solid ${border}`,fontSize:12 }}>
-                <span style={{ fontFamily:"monospace",color:accent,fontSize:10,overflow:"hidden",textOverflow:"ellipsis" }}>{p.id.substring(0,18)}…</span>
+              <div key={p.id} style={{ display:"grid",gridTemplateColumns:"0.8fr 1fr 1.2fr 65px 90px 80px 70px 45px 55px",padding:"10px 16px",alignItems:"center",background:i%2===0?"transparent":bg+"55",borderBottom:`1px solid ${border}`,fontSize:12 }}>
+                <span style={{ fontFamily:"monospace",color:accent,fontSize:10,overflow:"hidden",textOverflow:"ellipsis" }}>{p.id.substring(0,16)}…</span>
                 <span style={{ fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{p.prenom} {p.nom}</span>
                 <span style={{ color:sub,overflow:"hidden",textOverflow:"ellipsis",fontSize:11 }}>{p.email}</span>
                 <span style={{ background:border,color:sub,padding:"2px 6px",borderRadius:99,fontSize:10 }}>{p.categorie}</span>
+                <span style={{ color:sub,fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{p.ville||"—"}</span>
+                <span style={{ color:sub,fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{p.tranche_age||"—"}</span>
                 <Badge s={p.statut} />
                 <span style={{ color:pv>0?accent:sub,fontWeight:700,textAlign:"center" }}>{pv}</span>
                 <SrcBadge s={p.source} />
@@ -631,7 +653,7 @@ function ModAdmin({ P, S, V, db, notify }) {
 function PanelImport({ db, P, notify }) {
   const [step,setStep]=useState("upload"),[preview,setPreview]=useState([]),[errors,setErrors]=useState([]),[stats,setStats]=useState(null),[dragging,setDragging]=useState(false),[importing,setImporting]=useState(false)
   const fileRef=useRef(null)
-  const CSV_TPL=`id,nom,prenom,email,tel,categorie\nCLE-1774459811364-4053,Koné,Aminata,a.kone@mail.com,07 01 00 01,Visiteur\nCLE-1774459892341-7821,Diallo,Ibrahim,i.diallo@mail.com,07 01 00 02,Exposant\n,Touré,Fatoumata,f.toure@mail.com,07 01 00 03,Visiteur`
+  const CSV_TPL=`id,nom,prenom,email,tel,categorie,ville,tranche_age\nCLE-1774459811364-4053,Koné,Aminata,a.kone@mail.com,07 01 00 01,Visiteur,Abidjan,Adulte (26-45 ans)\nCLE-1774459892341-7821,Diallo,Ibrahim,i.diallo@mail.com,07 01 00 02,Exposant,Bouaké,Jeune (18-25 ans)\n,Touré,Fatoumata,f.toure@mail.com,07 01 00 03,Visiteur,Daloa,`
   const dlTemplate=()=>{ const b=new Blob([CSV_TPL],{type:"text/csv;charset=utf-8;"}),u=URL.createObjectURL(b),a=document.createElement("a"); a.href=u; a.download="template_participants_forum.csv"; a.click(); URL.revokeObjectURL(u) }
   const processFile=(file)=>{ if(!file||!file.name.endsWith(".csv")) return notify("⚠️ Fichier CSV uniquement",false); const r=new FileReader(); r.onload=(e)=>{ const {data,errors}=parseCSV(e.target.result); if(!data.length){notify("❌ Aucune donnée valide",false);setErrors(errors);return}; setPreview(data); setErrors(errors); setStep("preview") }; r.readAsText(file,"UTF-8") }
   const onDrop=(e)=>{ e.preventDefault(); setDragging(false); processFile(e.dataTransfer.files[0]) }
@@ -671,17 +693,19 @@ function PanelImport({ db, P, notify }) {
       </div>
       {errors.length>0&&<div style={{ background:warn+"18",border:`1px solid ${warn}44`,borderRadius:8,padding:12,marginBottom:14 }}><div style={{ fontWeight:700,fontSize:13,color:warn,marginBottom:6 }}>⚠️ {errors.length} ligne(s) ignorée(s)</div>{errors.map((e,i)=><div key={i} style={{ fontSize:12,color:warn+"CC" }}>• {e}</div>)}</div>}
       <div style={{ background:card,border:`1px solid ${border}`,borderRadius:12,overflow:"hidden",marginBottom:16 }}>
-        <div style={{ display:"grid",gridTemplateColumns:"1.4fr 1fr 1fr 1.6fr 80px 80px",padding:"8px 16px",background:bg,borderBottom:`1px solid ${border}` }}>
-          {["ID (QR Code)","Nom","Prénom","Email","Tél","Catégorie"].map(h=><div key={h} style={{ fontSize:10,color:sub,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5 }}>{h}</div>)}
+        <div style={{ display:"grid",gridTemplateColumns:"1.2fr 0.8fr 0.8fr 1.4fr 70px 70px 80px 80px",padding:"8px 16px",background:bg,borderBottom:`1px solid ${border}` }}>
+          {["ID (QR Code)","Nom","Prénom","Email","Tél","Catégorie","Ville","Âge"].map(h=><div key={h} style={{ fontSize:10,color:sub,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5 }}>{h}</div>)}
         </div>
         <div style={{ maxHeight:300,overflowY:"auto" }}>
           {preview.map((p,i)=>(
-            <div key={i} style={{ display:"grid",gridTemplateColumns:"1.4fr 1fr 1fr 1.6fr 80px 80px",padding:"9px 16px",alignItems:"center",background:i%2===0?"transparent":bg+"55",borderBottom:`1px solid ${border}`,fontSize:12 }}>
-              <span style={{ fontFamily:"monospace",color:accent,fontSize:10,overflow:"hidden",textOverflow:"ellipsis" }}>{p.id.substring(0,22)}…</span>
+            <div key={i} style={{ display:"grid",gridTemplateColumns:"1.2fr 0.8fr 0.8fr 1.4fr 70px 70px 80px 80px",padding:"9px 16px",alignItems:"center",background:i%2===0?"transparent":bg+"55",borderBottom:`1px solid ${border}`,fontSize:12 }}>
+              <span style={{ fontFamily:"monospace",color:accent,fontSize:10,overflow:"hidden",textOverflow:"ellipsis" }}>{p.id.substring(0,20)}…</span>
               <span style={{ fontWeight:600 }}>{p.nom}</span><span>{p.prenom}</span>
               <span style={{ color:sub,overflow:"hidden",textOverflow:"ellipsis",fontSize:11 }}>{p.email}</span>
               <span style={{ color:sub,fontSize:11 }}>{p.tel||"—"}</span>
               <span style={{ background:border,color:sub,padding:"2px 6px",borderRadius:99,fontSize:10 }}>{p.categorie}</span>
+              <span style={{ color:sub,fontSize:11 }}>{p.ville||"—"}</span>
+              <span style={{ color:sub,fontSize:10 }}>{p.tranche_age||"—"}</span>
             </div>
           ))}
         </div>
@@ -712,7 +736,7 @@ function PanelImport({ db, P, notify }) {
       <div style={{ background:card,border:`1px solid ${border}`,borderRadius:10,padding:16,marginBottom:16 }}>
         <div style={{ fontWeight:700,fontSize:13,marginBottom:12 }}>Colonnes attendues</div>
         <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:8 }}>
-          {[{col:"id",note:"QR Code existant (CLE-…)",req:false},{col:"nom",note:"Nom de famille",req:true},{col:"prenom",note:"Prénom",req:true},{col:"email",note:"Adresse email",req:true},{col:"tel",note:"Téléphone",req:false},{col:"categorie",note:"Visiteur / VIP…",req:false}].map(({col,note,req})=>(
+          {[{col:"id",note:"QR Code existant (CLE-…)",req:false},{col:"nom",note:"Nom de famille",req:true},{col:"prenom",note:"Prénom",req:true},{col:"email",note:"Adresse email",req:true},{col:"tel",note:"Téléphone",req:false},{col:"categorie",note:"Visiteur / VIP…",req:false},{col:"ville",note:"Ville ou localité",req:false},{col:"tranche_age",note:"Classe d'âge",req:false}].map(({col,note,req})=>(
             <div key={col} style={{ display:"flex",gap:8,alignItems:"flex-start" }}>
               <code style={{ background:bg,border:`1px solid ${border}`,color:accent,padding:"2px 8px",borderRadius:4,fontSize:12,flexShrink:0 }}>{col}</code>
               <span style={{ fontSize:12,color:sub,lineHeight:1.4 }}>{note} {req&&<span style={{ color:red }}>*</span>}</span>
