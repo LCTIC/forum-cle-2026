@@ -125,7 +125,15 @@ function QRScanner({ onResult, label="📷 Scanner un QR Code" }) {
         }
       }
 
-      stRef.current=stream; const v=vRef.current; v.srcObject=stream; await v.play(); setActive(true); setLoading(false)
+      stRef.current=stream
+      setActive(true)
+      setLoading(false)
+      // Attendre que React monte le <video> dans le DOM
+      await new Promise(r=>setTimeout(r,100))
+      const v=vRef.current
+      if(!v){ stop(); return }
+      v.srcObject=stream
+      await v.play()
       const tick=()=>{
         if(v.readyState!==v.HAVE_ENOUGH_DATA){rafRef.current=requestAnimationFrame(tick);return}
         const cv=cRef.current,ctx=cv.getContext("2d"); cv.width=v.videoWidth; cv.height=v.videoHeight; ctx.drawImage(v,0,0)
