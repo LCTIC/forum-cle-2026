@@ -111,7 +111,20 @@ function QRScanner({ onResult, label="📷 Scanner un QR Code" }) {
     setLoading(true); setError(null)
     try {
       const jsQR=await loadJsQR()
-      const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment",width:{ideal:640},height:{ideal:480}}})
+
+      // Essai 1 : caméra arrière (téléphone)
+      let stream=null
+      try {
+        stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment",width:{ideal:640},height:{ideal:480}}})
+      } catch(e1) {
+        // Essai 2 : n'importe quelle caméra (ordinateur ou téléphone sans caméra arrière)
+        try {
+          stream=await navigator.mediaDevices.getUserMedia({video:true})
+        } catch(e2) {
+          throw e2
+        }
+      }
+
       stRef.current=stream; const v=vRef.current; v.srcObject=stream; await v.play(); setActive(true); setLoading(false)
       const tick=()=>{
         if(v.readyState!==v.HAVE_ENOUGH_DATA){rafRef.current=requestAnimationFrame(tick);return}
@@ -121,7 +134,18 @@ function QRScanner({ onResult, label="📷 Scanner un QR Code" }) {
         rafRef.current=requestAnimationFrame(tick)
       }
       rafRef.current=requestAnimationFrame(tick)
-    } catch(e){ setLoading(false); setError(e.name==="NotAllowedError"?"Accès caméra refusé — utilisez la recherche manuelle":"Caméra indisponible — utilisez la recherche manuelle") }
+    } catch(e){
+      setLoading(false)
+      console.error("🎥 Erreur caméra :", e.name, e.message)
+      if(e.name==="NotAllowedError"||e.name==="PermissionDeniedError")
+        setError("Accès caméra refusé — autorisez la caméra dans les paramètres du navigateur")
+      else if(e.name==="NotFoundError"||e.name==="DevicesNotFoundError")
+        setError("Aucune caméra détectée sur cet appareil — utilisez la recherche manuelle")
+      else if(e.name==="NotSupportedError")
+        setError("Caméra non supportée sur ce navigateur — essayez Chrome ou Firefox")
+      else
+        setError(`Erreur caméra (${e.name}) — utilisez la recherche manuelle`)
+    }
   },[onResult,stop])
   useEffect(()=>()=>stop(),[stop])
   return (
@@ -238,7 +262,7 @@ export default function App() {
       <header style={{ background:card,borderBottom:`1px solid ${border}`,padding:"12px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12 }}>
         <div style={{ display:"flex",alignItems:"center",gap:16 }}>
           {/* Logo CLE */}
-          <img src={LOGO_CLE} alt="Forum CLE" style={{ height:52,objectFit:"contain",mixBlendMode:"screen",opacity:0.9 }} />
+          <img src={LOGO_CLE} alt="Forum CLE" style={{ height:52,objectFit:"contain",filter:"brightness(0) invert(1)",opacity:0.92 }} />
           <div style={{ borderLeft:`1px solid ${border}`,paddingLeft:16 }}>
             <div style={{ fontWeight:800,fontSize:13,color:txt,letterSpacing:0.3,lineHeight:1.3 }}>
               FORUM CHRÉTIEN DE LA LECTURE<br/>ET DE L'ÉCRITURE
@@ -348,7 +372,7 @@ function ModInscription({ P, db, notify }) {
         </div>
         <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:20 }}>
           <div><label style={lbl}>Ville / Localité</label><input style={inp} value={form.ville} onChange={set("ville")} placeholder="Abidjan, Bouaké…" /></div>
-          <div><label style={lbl}>Tranche d'âge</label><select style={inp} value={form.tranche_age} onChange={set("tranche_age")}><option value="">— Choisir —</option>{["Enfant (- 13 ans)","Adolescent (13-18 ans)","Jeune (18-25 ans)","Adulte (26-45 ans)","Senior (+ 45 ans)"].map(t=><option key={t}>{t}</option>)}</select></div>
+          <div><label style={lbl}>Tranche d'âge</label><select style={inp} value={form.tranche_age} onChange={set("tranche_age")}><option value="">— Choisir —</option>{["Adolescent (- 18 ans)","Jeune (18-25 ans)","Adulte (26-45 ans)","Senior (+ 45 ans)"].map(t=><option key={t}>{t}</option>)}</select></div>
         </div>
         <button style={{ ...btnP(),opacity:saving?0.6:1 }} disabled={saving} onClick={submit}>{saving?"⏳ Enregistrement…":"✦ Inscrire et générer QR Code"}</button>
       </div>
