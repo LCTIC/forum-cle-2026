@@ -37,6 +37,25 @@ const btnP = (c=accent,fg="#0D1117") => ({ background:c, color:fg, border:"none"
 const btnS = (c=green,fg="#0D1117") => ({ background:c, color:fg, border:"none", borderRadius:6, padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer" })
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+// Bip sonore + vibration au scan QR réussi
+function bipScan(succes=true) {
+  // Vibration (mobile)
+  if(navigator.vibrate) navigator.vibrate(succes ? [100] : [50,50,50])
+  // Bip sonore via Web Audio API
+  try {
+    const ctx  = new (window.AudioContext||window.webkitAudioContext)()
+    const osc  = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.frequency.value = succes ? 880 : 300  // aigu=succès, grave=erreur
+    gain.gain.setValueAtTime(0.3, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3)
+    osc.start(ctx.currentTime)
+    osc.stop(ctx.currentTime + 0.3)
+  } catch(e) { /* Audio non supporté — silencieux */ }
+}
+
 const newId   = () => `CLE-${Date.now()}-${Math.floor(Math.random()*9000+1000)}`
 const nowTime = () => new Date().toLocaleTimeString("fr-FR", { hour:"2-digit", minute:"2-digit" })
 let _sseq = 7
@@ -138,7 +157,7 @@ function QRScanner({ onResult, label="📷 Scanner un QR Code" }) {
         if(v.readyState!==v.HAVE_ENOUGH_DATA){rafRef.current=requestAnimationFrame(tick);return}
         const cv=cRef.current,ctx=cv.getContext("2d"); cv.width=v.videoWidth; cv.height=v.videoHeight; ctx.drawImage(v,0,0)
         const img=ctx.getImageData(0,0,cv.width,cv.height),res=jsQR(img.data,img.width,img.height,{inversionAttempts:"dontInvert"})
-        if(res?.data){stop();onResult(res.data);return}
+        if(res?.data){stop();bipScan(true);onResult(res.data);return}
         rafRef.current=requestAnimationFrame(tick)
       }
       rafRef.current=requestAnimationFrame(tick)
@@ -248,7 +267,134 @@ function useForumData(notify) {
 // ═══════════════════════════════════════════════════════════════════════════════
 //  APP
 // ═══════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
+//  BOUTON SCANNER FLOTTANT (mobile)
+// ═══════════════════════════════════════════════════════════════════════════════
+function FloatingScanner({ P, V, stand, tab, db, notify }) {
+  const [open,  setOpen]  = useState(false)
+  const [result,setResult]= useState(null)
+
+  // Visible uniquement sur Check-in et Stands, pas sur Inscription/Admin
+  if(tab!=="checkin" && tab!=="stands") return null
+  // Visible uniquement sur mobile (largeur < 768px) via CSS
+  const handleScan = async(data) => {
+    setOpen(false)
+    const p = P.find(x=>x.id===data.trim())
+    if(!p){ bipScan(false); notify("❌ QR non reconnu",false); return }
+    bipScan(true)
+
+    if(tab==="checkin") {
+      if(p.statut==="PRESENT"){ notify(`${p.prenom} ${p.nom} déjà présent·e`,false); return }
+      await db.checkIn(p.id)
+      setResult({ type:"checkin", nom:`${p.prenom} ${p.nom}`, statut:"PRÉSENT·E ✅" })
+      notify(`✅ ${p.prenom} ${p.nom} — PRÉSENT·E`)
+    } else if(tab==="stands" && stand) {
+      if(V.some(v=>v.pid===p.id&&v.sid===stand.id)){ notify(`${p.prenom} ${p.nom} déjà enregistré`,false); return }
+      await db.addVisite({pid:p.id,pnom:`${p.prenom} ${p.nom}`,sid:stand.id,snom:stand.nom,heure:nowTime(),categorie:p.categorie})
+      setResult({ type:"visite", nom:`${p.prenom} ${p.nom}`, stand:stand.nom })
+      notify(`✅ ${p.prenom} ${p.nom} @ ${stand.nom}`)
+    }
+    // Effacer le résultat après 3s
+    setTimeout(()=>setResult(null), 3000)
+  }
+
+  return (
+    <>
+      {/* Style mobile uniquement */}
+      <style>{`@media(min-width:768px){.fab-scanner{display:none!important}}`}</style>
+
+      {/* Résultat flash centré */}
+      {result&&(
+        <div style={{ position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:9998,background:card,border:`2px solid ${green}`,borderRadius:16,padding:"24px 32px",textAlign:"center",boxShadow:"0 12px 40px rgba(0,0,0,0.6)",minWidth:260 }}>
+          <div style={{ fontSize:40,marginBottom:8 }}>{result.type==="checkin"?"✅":"🏢"}</div>
+          <div style={{ fontWeight:800,fontSize:18,color:green,marginBottom:4 }}>{result.nom}</div>
+          <div style={{ fontSize:14,color:sub }}>{result.type==="checkin" ? "Marqué PRÉSENT·E" : `Stand : ${result.stand}`}</div>
+        </div>
+      )}
+
+      {/* Modal scanner */}
+      {open&&(
+        <div style={{ position:"fixed",inset:0,zIndex:9997,background:"rgba(0,0,0,0.85)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:20 }}>
+          <div style={{ background:card,borderRadius:16,padding:20,width:"100%",maxWidth:400 }}>
+            <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
+              <span style={{ fontWeight:700,fontSize:16,color:txt }}>
+                {tab==="checkin"?"📷 Scanner — Entrée":"📷 Scanner — Stand"}
+              </span>
+              <button onClick={()=>setOpen(false)} style={{ background:red+"cc",color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontSize:13,fontWeight:700,cursor:"pointer" }}>✕</button>
+            </div>
+            <QRScanner onResult={handleScan} label="📷 Pointer vers le QR Code" />
+          </div>
+        </div>
+      )}
+
+      {/* Bouton flottant */}
+      <button className="fab-scanner" onClick={()=>setOpen(true)}
+        style={{ position:"fixed",bottom:24,right:24,zIndex:9996,width:64,height:64,borderRadius:"50%",background:accent,border:"none",fontSize:28,cursor:"pointer",boxShadow:"0 4px 20px rgba(0,212,170,0.5)",display:"flex",alignItems:"center",justifyContent:"center",transition:"transform 0.15s" }}
+        onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"}
+        onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
+      >
+        📷
+      </button>
+    </>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  ÉCRAN CHOIX DE RÔLE
+// ═══════════════════════════════════════════════════════════════════════════════
+function RoleScreen({ onSelect }) {
+  const ROLES = [
+    { id:"checkin",     icon:"🚪", label:"Agent Entrée",   desc:"Scanner les badges à l'entrée",     color:green,    href:null                              },
+    { id:"stands",      icon:"🏢", label:"Agent Stand",    desc:"Enregistrer les visites aux stands", color:accent,   href:null                              },
+    { id:"inscription", icon:"📝", label:"Inscription",    desc:"Inscrire un nouveau participant",    color:blue,     href:"https://forumcle.org/inscription.html" },
+    { id:"admin",       icon:"⚙️", label:"Administrateur", desc:"Statistiques et gestion globale",   color:"#A371F7",href:null                              },
+  ]
+  return (
+    <div style={{ minHeight:"100vh",background:bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif" }}>
+      {/* Logos */}
+      <div style={{ display:"flex",alignItems:"center",gap:16,marginBottom:32 }}>
+        <img src={LOGO_CLE} alt="Forum CLE" style={{ height:56,objectFit:"contain",mixBlendMode:"screen",opacity:0.95 }} />
+        <div style={{ borderLeft:`1px solid ${border}`,paddingLeft:16 }}>
+          <div style={{ fontWeight:800,fontSize:16,color:txt }}>FORUM CHRÉTIEN DE LA LECTURE</div>
+          <div style={{ fontWeight:800,fontSize:16,color:txt }}>ET DE L'ÉCRITURE</div>
+          <div style={{ fontSize:12,color:"#F4A020",fontWeight:700,marginTop:2 }}>10 & 11 Avril 2026 · CSCTICAO</div>
+        </div>
+        <img src={LOGO_ZOE} alt="Maison de Zoé" style={{ height:40,objectFit:"contain",borderRadius:4,opacity:0.85 }} />
+      </div>
+
+      {/* Titre */}
+      <div style={{ textAlign:"center",marginBottom:36 }}>
+        <div style={{ fontSize:22,fontWeight:800,color:txt,marginBottom:8 }}>👋 Bienvenue !</div>
+        <div style={{ fontSize:15,color:sub }}>Sélectionnez votre rôle pour commencer</div>
+      </div>
+
+      {/* Cartes rôles */}
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,maxWidth:500,width:"100%" }}>
+        {ROLES.map(r=>(
+          <button key={r.id}
+            onClick={()=>{ if(r.href) window.open(r.href,"_blank"); else onSelect(r.id) }}
+            style={{ background:card,border:`2px solid ${border}`,borderRadius:16,padding:24,textAlign:"center",cursor:"pointer",transition:"all 0.2s",display:"flex",flexDirection:"column",alignItems:"center",gap:10 }}
+            onMouseEnter={e=>{ e.currentTarget.style.border=`2px solid ${r.color}`; e.currentTarget.style.background=r.color+"11" }}
+            onMouseLeave={e=>{ e.currentTarget.style.border=`2px solid ${border}`; e.currentTarget.style.background=card }}
+          >
+            <span style={{ fontSize:36 }}>{r.icon}</span>
+            <div style={{ fontWeight:700,fontSize:15,color:txt }}>{r.label}</div>
+            <div style={{ fontSize:12,color:sub,lineHeight:1.4 }}>{r.desc}</div>
+            {r.href&&<span style={{ fontSize:10,color:r.color,fontWeight:700,marginTop:2 }}>↗ Site web</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* Version */}
+      <div style={{ marginTop:40,fontSize:11,color:sub+"88" }}>
+        Système de gestion Forum CLE · v2.0
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
+  const [role,setRole]=useState(null)  // null = écran de sélection
   const [tab,setTab]=useState("inscription")
   const [toast,setToast]=useState(null)
   const notify=(msg,ok=true)=>{ setToast({msg,ok}); setTimeout(()=>setToast(null),3500) }
@@ -261,6 +407,9 @@ export default function App() {
     </div>
   )
 
+  // Écran de sélection du rôle
+  if(!role) return <RoleScreen onSelect={(r)=>{ setRole(r); setTab(r) }} />
+
   const counts={total:P.length,pres:P.filter(p=>p.statut==="PRESENT").length,visits:V.length,stands:S.length}
   const TABS=[{id:"inscription",icon:"📝",label:"Inscription"},{id:"checkin",icon:"🚪",label:"Check-in"},{id:"stands",icon:"🏢",label:"Stands"},{id:"admin",icon:"⚙️",label:"Admin"}]
 
@@ -270,7 +419,7 @@ export default function App() {
       <header style={{ background:card,borderBottom:`1px solid ${border}`,padding:"12px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12 }}>
         <div style={{ display:"flex",alignItems:"center",gap:16 }}>
           {/* Logo CLE */}
-          <img src={LOGO_CLE} alt="Forum CLE" style={{ height:52,objectFit:"contain",filter:"brightness(0) invert(1)",opacity:0.92 }} />
+          <img src={LOGO_CLE} alt="Forum CLE" style={{ height:52,objectFit:"contain",mixBlendMode:"screen",opacity:0.95 }} />
           <div style={{ borderLeft:`1px solid ${border}`,paddingLeft:16 }}>
             <div style={{ fontWeight:800,fontSize:13,color:txt,letterSpacing:0.3,lineHeight:1.3 }}>
               FORUM CHRÉTIEN DE LA LECTURE<br/>ET DE L'ÉCRITURE
@@ -286,7 +435,10 @@ export default function App() {
           {/* Logo Maison de Zoé */}
           <img src={LOGO_ZOE} alt="La Maison de Zoé" style={{ height:36,objectFit:"contain",borderRadius:4,opacity:0.85,marginLeft:8 }} />
         </div>
-        <div style={{ display:"flex",gap:10,flexWrap:"wrap" }}>
+        <div style={{ display:"flex",gap:10,flexWrap:"wrap",alignItems:"center" }}>
+          <button onClick={()=>setRole(null)} style={{ background:"none",border:`1px solid ${border}`,color:sub,borderRadius:8,padding:"6px 12px",fontSize:11,cursor:"pointer",fontWeight:600 }}>
+            ⬅ Changer de rôle
+          </button>
           {[{l:"Inscrits",v:counts.total,c:blue},{l:"Présents",v:counts.pres,c:green},{l:"Visites",v:counts.visits,c:warn},{l:"Stands",v:counts.stands,c:"#A371F7"}].map(({l,v,c})=>(
             <div key={l} style={{ background:c+"18",border:`1px solid ${c}44`,borderRadius:8,padding:"6px 14px",textAlign:"center",minWidth:55 }}>
               <div style={{ fontSize:20,fontWeight:800,color:c,lineHeight:1 }}>{v}</div>
@@ -308,6 +460,15 @@ export default function App() {
         {tab==="stands"     &&<ModStands     P={P} S={S} V={V} db={db} notify={notify} />}
         {tab==="admin"      &&<ModAdmin      P={P} S={S} V={V} db={db} notify={notify} />}
       </main>
+
+      {/* Bouton scanner flottant — visible sur mobile en Check-in et Stands */}
+      <FloatingScanner
+        P={P} V={V}
+        stand={null}
+        tab={tab}
+        db={db}
+        notify={notify}
+      />
     </div>
   )
 }
@@ -399,7 +560,7 @@ function ModCheckIn({ P, db, notify }) {
     setBusy(p.id); await db.checkIn(p.id); setBusy(null)
     notify(`✅ ${p.prenom} ${p.nom} — PRÉSENT·E`); setSearch("")
   }
-  const handleScan=async(data)=>{ const p=P.find(x=>x.id===data.trim()); if(!p) return notify("❌ QR non reconnu",false); await doCheckIn(p) }
+  const handleScan=async(data)=>{ const p=P.find(x=>x.id===data.trim()); if(!p){bipScan(false);return notify("❌ QR non reconnu",false)}; bipScan(true); await doCheckIn(p) }
   const results=search.length>1?P.filter(p=>`${p.nom} ${p.prenom} ${p.id} ${p.email}`.toLowerCase().includes(search.toLowerCase())):[]
   const nb={total:P.length,pres:P.filter(p=>p.statut==="PRESENT").length}
   const pct=nb.total>0?Math.round((nb.pres/nb.total)*100):0
@@ -467,7 +628,7 @@ function ModStands({ P, S, V, db, notify }) {
   useEffect(()=>{ if(S.length&&!stand) setStand(S[0]) },[S])
   useEffect(()=>{ if(stand&&!S.find(s=>s.id===stand.id)) setStand(S[0]||null) },[S])
 
-  const handleScan=async(data)=>{ const p=P.find(x=>x.id===data.trim()); if(!p) return notify("❌ Participant inconnu",false); await enregistrer(p) }
+  const handleScan=async(data)=>{ const p=P.find(x=>x.id===data.trim()); if(!p){bipScan(false);return notify("❌ Participant inconnu",false)}; bipScan(true); await enregistrer(p) }
   const enregistrer=async(p)=>{
     if(V.some(v=>v.pid===p.id&&v.sid===stand.id)) return notify(`${p.prenom} ${p.nom} a déjà visité ce stand`,false)
     const ok=await db.addVisite({pid:p.id,pnom:`${p.prenom} ${p.nom}`,sid:stand.id,snom:stand.nom,heure:nowTime(),categorie:p.categorie})
